@@ -66,9 +66,9 @@
 <div id="hint">Ziehen: umsehen · W A S D / Pfeiltasten: gehen · Klick auf Boden: dorthin gehen · Gerät: Maus darüber = Erklärung, Klick = hingehen</div>
 <div id="load">Rundgang wird geladen …</div>
 
-<script src="geraete.js?v=3"></script>
-<script src="kalender-config.js?v=3"></script>
-<script src="model.js?v=3"></script>
+<script src="geraete.js?v=4"></script>
+<script src="kalender-config.js?v=4"></script>
+<script src="model.js?v=4"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -111,8 +111,8 @@ const BLOCK = [
   [0, 0, 0.82, 2.9], [0, 2.6, 1.1, 4.4], [0, 4.1, 0.82, 6.6],        // Westzeile
   [1.68, 5.82, 3.96, 6.6],                                              // Waschbecken-Zeile
   [1.52, 4.42, 3.96, 5.38],                                            // Raumteiler + Tonnen
-  [3.18, 3.2, 3.96, 4.6], [3.3, 2.45, 3.96, 3.2],                       // FDM-Platte, Sauger
-  [2.93, 0.42, 3.96, 2.08], [2.78, 0, 3.96, 0.62],                      // Matik, CAM-Arbeitsplatz
+  [3.18, 3.2, 3.96, 4.6], [3.3, 2.7, 3.96, 3.3],                      // FDM-Platte, Sauger
+  [2.93, 1.07, 3.96, 2.73], [2.78, 0, 3.96, 0.62],                     // Matik, CAM-Arbeitsplatz
   [1.38, 0, 2.32, 1.02]                                                 // Rollwagen/Heizkoerper
 ];
 const free = (x, y) => x >= BOUNDS.x0 && x <= BOUNDS.x1 && y >= BOUNDS.y0 && y <= BOUNDS.y1 &&
