@@ -47,6 +47,20 @@
   .cal form button:disabled { opacity:.6; cursor:wait; }
   .cal .msg { grid-column:1 / -1; font-size:13px; min-height:1em; } .cal .msg.ok { color:#5fd08f; } .cal .msg.bad { color:#ff7a70; }
   #hint { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:7px 16px; color:var(--muted); font-size:13px; white-space:nowrap; max-width:calc(100vw - 24px); overflow:hidden; text-overflow:ellipsis; }
+  select { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:7px 8px; cursor:pointer; color-scheme:dark; max-width:210px; }
+  #list { bottom:322px !important; }
+  #map { position:fixed; left:16px; bottom:60px; width:150px; height:246px; background:var(--panel); border:1px solid var(--line); border-radius:12px; cursor:crosshair; display:none; touch-action:none; }
+  #map.open { display:block; }
+  #card .step { background:rgba(255,138,42,.16); border-radius:8px; padding:6px 9px; margin-bottom:8px; font-size:13.5px; }
+  #card .step b { color:var(--accent); }
+  @media (max-width: 700px) {
+    h1 { display:none; } #hint { display:none; }
+    #top { left:8px; right:8px; top:8px; gap:6px; } button, select { padding:6px 9px; font-size:14px; }
+    #list { left:8px; right:8px; width:auto; top:96px; bottom:auto !important; max-height:45vh; }
+    #card, #card.pin { left:8px !important; right:8px; top:auto !important; bottom:8px; width:auto; max-width:none; transform:none !important; max-height:44vh; overflow:auto; }
+    #map { left:auto; right:8px; bottom:auto; top:96px; width:110px; height:181px; }
+    .tag { font-size:11px; padding:2px 7px; }
+  }
   #load { position:fixed; inset:0; display:grid; place-items:center; background:var(--bg); font-size:16px; text-align:center; padding:24px; }
 </style>
 </head>
@@ -57,18 +71,22 @@
   <h1>CAD/CAM-Raum 4.412 · 3D-Druck / Fräsen</h1>
   <button id="bList">Geräteliste</button>
   <button id="bPrev" title="Vorheriges Gerät">◀</button>
-  <button id="bNext" title="Nächstes Gerät">Rundgang ▶</button>
+  <button id="bNext" title="Nächste Station">Weiter ▶</button>
+  <select id="sFlow" title="Rundgang oder Arbeitsablauf wählen" aria-label="Rundgang oder Arbeitsablauf wählen"></select>
   <button id="bTags" class="on">Beschriftungen</button>
+  <button id="bTex" class="on" title="Foto-Texturen an/aus (auch über den Lichtschalter neben der Tür)">Fotos</button>
+  <button id="bMap" title="Übersichtskarte an/aus">Karte</button>
   <button id="bHome">Zur Tür</button>
 </div>
 <div id="list"></div>
+<canvas id="map" width="300" height="492" aria-label="Übersichtskarte: Klick geht zur Stelle"></canvas>
 <div id="card"></div>
-<div id="hint">Ziehen: umsehen · W A S D / Pfeiltasten: gehen · Klick auf Boden: dorthin gehen · Gerät: Maus darüber = Erklärung, Klick = hingehen</div>
+<div id="hint">Ziehen: umsehen · W A S D: gehen · Klick auf Boden oder Karte: dorthin gehen · Gerät: Maus darüber = Erklärung, Klick = hingehen · Lichtschalter an der Tür: Fotos an/aus</div>
 <div id="load">Rundgang wird geladen …</div>
 
-<script src="geraete.js?v=4"></script>
-<script src="kalender-config.js?v=4"></script>
-<script src="model.js?v=4"></script>
+<script src="geraete.js?v=6"></script>
+<script src="kalender-config.js?v=6"></script>
+<script src="model.js?v=6"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -80,7 +98,31 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const G = window.CAM_GERAETE || {};
-const TOUR = ['waschbecken','xtool','therm3','psa','muell','formcurel','a1_regal','formcure','a1_platte','form3b_ost','p1s','sauger','matik','pc','form3bl','form3b_west','formwashl','abzug','formwash','material'];
+const TOUR = ['waschbecken','xtool','therm3','psa','muell','formcurel','a1_regal','formcure','a1_platte','form3b_ost','p1s','sauger','matik','pc','form3bl','form3b_west','formwashl','wandschrank','abzug','formwash','material','lichtschalter'];
+// Arbeitsablaeufe: Reihenfolge der Stationen mit kurzem Hinweis je Schritt (frei anpassbar)
+const FLOWS = {
+  sla_klein: { name: 'Ablauf: SLA-Druck (Form 3B)', steps: [
+    ['psa', 'Handschuhe und Schutzbrille anlegen.'], ['material', 'Harzkartusche, Tank und Bauplattform holen.'],
+    ['form3b_ost', 'Druckauftrag starten.'], ['formwash', 'Bauplattform einhängen und Teile waschen.'],
+    ['abzug', 'Teile trocknen und von der Plattform lösen.'], ['formcure', 'Teile nachhärten.'],
+    ['abzug', 'Stützstrukturen entfernen und nacharbeiten.'], ['muell', 'Handschuhe und Reste entsorgen.']] },
+  sla_gross: { name: 'Ablauf: SLA-Druck groß (Form 3BL)', steps: [
+    ['psa', 'Handschuhe und Schutzbrille anlegen.'], ['material', 'Harzkartuschen, Tank und Bauplattform holen.'],
+    ['form3bl', 'Druckauftrag starten.'], ['formwashl', 'Teile im Form Wash L waschen.'],
+    ['abzug', 'Teile trocknen und von der Plattform lösen.'], ['formcurel', 'Teile im Form Cure L nachhärten.'],
+    ['muell', 'Handschuhe und Reste entsorgen.']] },
+  fraesen: { name: 'Ablauf: Fräsen und Sintern', steps: [
+    ['pc', 'Auftrag am CAM-Arbeitsplatz vorbereiten.'], ['matik', 'Rohling zuweisen und Fräsjob starten.'],
+    ['sauger', 'Arbeitsbereich reinigen.'], ['therm3', 'Zirkonoxid-Arbeiten sintern.']] },
+  fdm: { name: 'Ablauf: FDM-Druck', steps: [
+    ['material', 'Filament auswählen.'], ['p1s', 'Druck am P1S starten (geschlossener Bauraum).'],
+    ['a1_platte', 'Oder: Druck am A1 starten (offener Bauraum).'], ['muell', 'Stützmaterial und Fehldrucke entsorgen.']] },
+  laser: { name: 'Ablauf: Lasern', steps: [
+    ['psa', 'Schutzausrüstung prüfen.'], ['xtool', 'Material einlegen, Deckel schließen, Absaugung an, Job starten.'],
+    ['muell', 'Reste entsorgen.']] }
+};
+let flowKey = '', tourIds = TOUR;
+const flowStep = () => flowKey && tourIdx >= 0 ? FLOWS[flowKey].steps[tourIdx] : null;
 const EYE = 1.62;
 // Blender (x, y, z) -> three (x, z, -y)
 const B = (x, y, z = 0) => new THREE.Vector3(x, z, -y);
@@ -142,9 +184,23 @@ function goHome() { flyTo(1.25, 6.1, B(2.2, 1.5, 1.2)); }
 const devices = {};     // id -> { node, meshes, box, center, front, tag }
 const pickables = [];
 // Schranktueren (Materialschraenke): per Klick oeffnen/schliessen
-const doors = []; let doorsOpen = false, doorT = 0;
-const qDoor = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0);
-function setDoors(open) { doorsOpen = open; }
+// Blender-Z (senkrecht) = three Y; Blender-Y (entlang der Wand) = three -Z
+const doors = [], doorOpen = {};
+const qDoor = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0), AXIS_Y = new THREE.Vector3(0, 0, -1);
+const hasDoors = id => doors.some(d => d.group === id);
+// Foto-Texturen: per Lichtschalter neben der Tuer oder Knopf "Fotos" an/aus
+const texMats = []; let texOn = true;
+function setTextures(on) {
+  texOn = on;
+  for (const t of texMats) {
+    t.m.map = on ? t.map : null; t.m.emissiveMap = on ? t.em : null;
+    if (on) { t.m.color.copy(t.col); if (t.em) t.m.emissive.copy(t.emc); }
+    else { t.m.color.setRGB(t.avg[0], t.avg[1], t.avg[2], THREE.SRGBColorSpace); if (t.em) t.m.emissive.copy(t.m.color); }
+    t.m.needsUpdate = true;
+  }
+  document.getElementById('bTex').classList.toggle('on', on);
+}
+window.__cam = { doors, doorOpen, texMats };   // fuer Fehlersuche in der Browser-Konsole
 let floorMesh = null;
 function b64ToBuffer(b64) {
   const bin = atob(b64), n = bin.length, u8 = new Uint8Array(n);
@@ -161,7 +217,8 @@ new GLTFLoader().parse(b64ToBuffer(window.CAM_MODEL_B64), '', (gltf) => {
   });
   gltf.scene.traverse(o => {
     if (o.userData && typeof o.userData.door_open_deg === 'number')
-      doors.push({ node: o, base: o.quaternion.clone(), ang: THREE.MathUtils.degToRad(o.userData.door_open_deg) });
+      doors.push({ node: o, base: o.quaternion.clone(), ang: THREE.MathUtils.degToRad(o.userData.door_open_deg),
+                   axis: o.userData.door_axis === 'y' ? AXIS_Y : UP, group: o.userData.door_group || 'material', t: 0 });
   });
   gltf.scene.traverse(o => {
     if (!o.isMesh) return;
@@ -175,6 +232,8 @@ new GLTFLoader().parse(b64ToBuffer(window.CAM_MODEL_B64), '', (gltf) => {
       o.userData.emI = o.material.emissiveIntensity;
       dev.meshes.push(o);
     }
+    if (o.material.map) texMats.push({ m: o.material, map: o.material.map, em: o.material.emissiveMap, col: o.material.color.clone(),
+                                       emc: o.material.emissive.clone(), avg: o.userData.tex_avg || [0.72, 0.72, 0.72] });
     pickables.push(o);
   });
   const tags = document.getElementById('tags');
@@ -221,9 +280,9 @@ function visit(id) {
   const s = standpoint(d);
   flyTo(s.x, s.y, d.center);
   camera.fov = id === 'material' ? 88 : 72; camera.updateProjectionMatrix();   // Schraenke: Weitwinkel, damit beide ins Bild passen
-  tourIdx = TOUR.indexOf(id);
+  if (!(tourIdx >= 0 && tourIds[tourIdx] === id)) tourIdx = tourIds.indexOf(id);
   if (pinned !== id) calMsg = null;
-  if (id === 'material') setDoors(pinned === id ? !doorsOpen : true);   // erster Klick oeffnet, weiterer Klick schliesst/oeffnet
+  if (hasDoors(id)) doorOpen[id] = pinned === id ? !doorOpen[id] : true;   // erster Klick oeffnet, weiterer Klick schliesst/oeffnet
   pinned = id; setActive(id, false); showCard(id, null);
   document.querySelectorAll('#list div').forEach(e => e.classList.toggle('act', e.dataset.id === id));
 }
@@ -239,8 +298,48 @@ function buildList() {
   }
 }
 document.getElementById('bList').onclick = (e) => { document.getElementById('list').classList.toggle('open'); e.target.classList.toggle('on'); };
-document.getElementById('bNext').onclick = () => { tourIdx = (tourIdx + 1) % TOUR.length; visit(TOUR[tourIdx]); };
-document.getElementById('bPrev').onclick = () => { tourIdx = (tourIdx - 1 + TOUR.length) % TOUR.length; visit(TOUR[tourIdx]); };
+const tourLen = () => flowKey ? tourIds.length : tourIds.length - 1;        // freier Rundgang: Lichtschalter auslassen
+document.getElementById('bNext').onclick = () => { tourIdx = (tourIdx + 1) % tourLen(); cardKey = ''; visit(tourIds[tourIdx]); };
+document.getElementById('bPrev').onclick = () => { tourIdx = (tourIdx - 1 + tourLen()) % tourLen(); cardKey = ''; visit(tourIds[tourIdx]); };
+const sFlow = document.getElementById('sFlow');
+sFlow.innerHTML = '<option value="">Rundgang: alle Stationen</option>' + Object.entries(FLOWS).map(([k, f]) => `<option value="${k}">${f.name}</option>`).join('');
+sFlow.onchange = () => {
+  flowKey = sFlow.value; tourIds = flowKey ? FLOWS[flowKey].steps.map(s => s[0]) : TOUR;
+  tourIdx = 0; cardKey = ''; visit(tourIds[0]); sFlow.blur();
+};
+document.getElementById('bTex').onclick = () => setTextures(!texOn);
+const mapEl = document.getElementById('map');
+document.getElementById('bMap').onclick = (e) => { mapEl.classList.toggle('open'); e.target.classList.toggle('on'); };
+if (innerWidth > 700) { mapEl.classList.add('open'); document.getElementById('bMap').classList.add('on'); }
+// ---------- Uebersichtskarte (Tuer oben, Fenster unten) ----------
+const MS = 300 / 3.96, mctx = mapEl.getContext('2d');
+const mx = x => x * MS, my = y => (6.6 - y) * MS;
+function drawMap() {
+  if (!mapEl.classList.contains('open')) return;
+  mctx.clearRect(0, 0, 300, 492);
+  mctx.fillStyle = 'rgba(120,140,190,.28)'; mctx.fillRect(0, 0, 300, 492);
+  mctx.fillStyle = 'rgba(235,238,245,.55)';
+  for (const r of BLOCK) mctx.fillRect(mx(r[0]) + 4, my(r[3]) + 4, (r[2] - r[0]) * MS - 8, (r[3] - r[1]) * MS - 8);
+  mctx.fillStyle = '#ff8a2a'; mctx.fillRect(mx(0.75), 0, mx(1.76) - mx(0.75), 5);          // Tuer
+  mctx.fillStyle = '#ffd27a'; mctx.fillRect(mx(1.0), 487, mx(2.9) - mx(1.0), 5);            // Fenster
+  for (const d of Object.values(devices)) {
+    const s = statusOf(d.id);
+    mctx.fillStyle = d.id === active ? '#ff8a2a' : s ? (s.busy ? '#e5392f' : '#1faa59') : '#5b6a86';
+    mctx.beginPath(); mctx.arc(mx(d.center.x), my(-d.center.z), d.id === active ? 9 : 6, 0, 6.3); mctx.fill();
+  }
+  const px = mx(pos.x), py = my(pos.y), dx = -Math.sin(yaw), dy = -Math.cos(yaw);
+  mctx.fillStyle = '#ffffff'; mctx.strokeStyle = '#0e1420'; mctx.lineWidth = 3;
+  mctx.beginPath(); mctx.moveTo(px + dx * 20, py + dy * 20); mctx.lineTo(px - dy * 10 - dx * 8, py + dx * 10 - dy * 8);
+  mctx.lineTo(px + dy * 10 - dx * 8, py - dx * 10 - dy * 8); mctx.closePath(); mctx.stroke(); mctx.fill();
+}
+mapEl.addEventListener('pointerdown', (e) => {
+  const r = mapEl.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * 3.96, y = 6.6 - (e.clientY - r.top) / r.height * 6.6;
+  let best = null, bd = 1e9;                         // naechster begehbarer Punkt
+  for (let gx = 0.3; gx <= 3.7; gx += 0.1) for (let gy = 0.3; gy <= 6.4; gy += 0.1)
+    if (free(gx, gy)) { const dd = (gx - x) ** 2 + (gy - y) ** 2; if (dd < bd) { bd = dd; best = [gx, gy]; } }
+  if (best) fly = { t0: performance.now(), dur: 800, x0: pos.x, y0: pos.y, x1: best[0], y1: best[1], yaw0: yaw, dyaw: 0, p0: pitch, p1: pitch };
+});
 document.getElementById('bHome').onclick = () => { pinned = null; setActive(null); hideCard(); goHome(); };
 let showTags = true;
 document.getElementById('bTags').onclick = (e) => { showTags = !showTags; e.target.classList.toggle('on', showTags); };
@@ -370,11 +469,14 @@ function setActive(id, glow = true) {          // glow=false: nur Beschriftung h
 }
 let cardKey = '';
 function showCard(id, ev) {
-  const key = id + (ev ? '|h|' : '|p|') + calVer;
+  const st = !ev && flowStep() && tourIds[tourIdx] === id ? flowStep() : null;
+  const key = id + (ev ? '|h|' : '|p|') + calVer + (st ? flowKey + tourIdx : '') + texOn;
   if (key !== cardKey) {                     // nur bei Aenderung neu aufbauen (Formular-Eingaben bleiben erhalten)
     cardKey = key;
     const info = G[id] || { name: id, text: '' };
-    card.innerHTML = `<div class="kat">${info.kategorie || ''}</div><h2>${info.name}</h2><p>${info.text || ''}</p>` +
+    card.innerHTML = (st ? `<div class="step"><b>Schritt ${tourIdx + 1} von ${tourIds.length}</b> · ${st[1]}</div>` : '') +
+      (id === 'lichtschalter' ? `<div class="step">Foto-Texturen sind <b>${texOn ? 'an' : 'aus'}</b>.</div>` : '') +
+      `<div class="kat">${info.kategorie || ''}</div><h2>${info.name}</h2><p>${info.text || ''}</p>` +
       (info.punkte && info.punkte.length ? '<ul>' + info.punkte.map(p => `<li>${p}</li>`).join('') + '</ul>' : '') + calHtml(id, !ev);
     card.classList.toggle('pin', !ev);
     if (!ev) bindForm(id);
@@ -421,6 +523,9 @@ canvas.addEventListener('pointerup', (e) => {
   if (wasDrag) return;
   const h = pick(e); if (!h) return;
   const id = h.object.userData.dev;
+  if (id === 'lichtschalter') {                    // Schalter: Texturen umschalten, ohne hinzulaufen
+    setTextures(!texOn); pinned = id; setActive(id, false); showCard(id, null); return;
+  }
   if (id) { visit(id); return; }
   pinned = null;
   if (h.object === floorMesh || h.face && h.face.normal.y > 0.9 && h.point.y < 0.2) {
@@ -463,14 +568,16 @@ function frame(now) {
     if (free(pos.x + dx, pos.y)) pos.x += dx;
     if (free(pos.x, pos.y + dy)) pos.y += dy;
   }
-  const dTarget = doorsOpen ? 1 : 0;
-  if (doorT !== dTarget) {
-    doorT = Math.max(0, Math.min(1, doorT + Math.sign(dTarget - doorT) * dt / 0.9));
-    const k = doorT * doorT * (3 - 2 * doorT);
-    for (const d of doors) { qDoor.setFromAxisAngle(UP, d.ang * k); d.node.quaternion.copy(d.base).multiply(qDoor); }
+  for (const d of doors) {
+    const target = doorOpen[d.group] ? 1 : 0;
+    if (d.t === target) continue;
+    d.t = Math.max(0, Math.min(1, d.t + Math.sign(target - d.t) * dt / 0.9));
+    const k = d.t * d.t * (3 - 2 * d.t);
+    qDoor.setFromAxisAngle(d.axis, d.ang * k); d.node.quaternion.copy(d.base).multiply(qDoor);
   }
   applyCam();
   renderer.render(scene, camera);
+  drawMap();
   // Beschriftungen
   const list = Object.values(devices);
   if (list.length) {

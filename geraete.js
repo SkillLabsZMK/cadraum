@@ -117,6 +117,18 @@ window.CAM_GERAETE = {
     text: "Zwei Waschgeräte im Abzug für Teile aus dem Form 3B. Die Bauplattform wird eingehängt, die Teile werden automatisch gewaschen und anschließend aus dem Bad gehoben.",
     punkte: []
   },
+  lichtschalter: {
+    name: "Lichtschalter",
+    kategorie: "Ansicht",
+    text: "Dieser Schalter neben der Tür schaltet die Foto-Texturen im ganzen Raum an und aus: Foto-Ansicht für den realistischen Eindruck, Modell-Ansicht für die klare Übersicht.",
+    punkte: ["Anklicken zum Umschalten", "Dasselbe macht der Knopf „Fotos“ oben"]
+  },
+  wandschrank: {
+    name: "Wandschrank Formlabs-Zubehör",
+    kategorie: "Lager",
+    text: "Wandschrank über dem Form Wash L. Anklicken öffnet die Klappen nach oben, ein weiterer Klick schließt sie wieder.",
+    punkte: ["Zubehör und Verbrauchsmaterial für die Formlabs-Drucker"]
+  },
   material: {
     name: "Materialschränke",
     kategorie: "Lager",
